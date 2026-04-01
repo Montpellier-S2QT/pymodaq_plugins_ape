@@ -32,7 +32,7 @@ Below is the list of instruments included in this plugin
 Actuators
 +++++++++
 
-* Harmonixx: control of Harmonixx series of harmonics generators
+* **Harmonixx**: control of Harmonixx series of harmonics generators
 
 
 Installation instructions
