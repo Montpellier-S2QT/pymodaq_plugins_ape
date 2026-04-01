@@ -1,0 +1,150 @@
+
+from typing import Union, List, Dict
+from pymodaq.control_modules.move_utility_classes import (DAQ_Move_base, comon_parameters_fun,
+                                                          main, DataActuatorType, DataActuator)
+
+from pymodaq_utils.utils import ThreadCommand  # object used to send info back to the main thread
+from pymodaq_gui.parameter import Parameter
+
+from pymodaq_plugins_ape.hardware.harmonixx import Harmonixx
+from pymodaq_plugins_ape.hardware.utils import get_resources
+
+
+class DAQ_Move_Harmonixx(DAQ_Move_base):
+    """ Instrument plugin class for a Harmonixx harmonics generator using VISA communication.
+
+        * Tested with a Harmonixx FHG
+        * Tested with PyMoDAQ ver5.2.0a1
+        * Tested on OS: Win11
+        * NI-VISA library is required to communicate with the instrument
+
+    This object inherits all functionalities to communicate with PyMoDAQ’s DAQ_Move module through inheritance via
+    DAQ_Move_base. It makes a bridge between the DAQ_Move module and the Python wrapper of a particular instrument.
+
+    Attributes:
+    -----------
+    controller: object
+        The particular object that allow the communication with the hardware, in general a python wrapper around the
+         hardware library.
+
+    """
+    is_multiaxes = True
+    _axis_names: Union[List[str], Dict[str, int]] = ["SHG", "WP", "DC", "THG", "WAVELENGTH"]
+    _controller_units: Union[str, List[str]] = ['', '', '', '', 'm']
+    _epsilon: Union[float, List[float]] = [0.1, 0.1, 0.1, 0.1, 0.1]
+    data_actuator_type = DataActuatorType.DataActuator
+
+
+    params = [{'title': 'Address:', 'name': 'address', 'type': 'list', 'limits': get_resources()}
+                ] + comon_parameters_fun(is_multiaxes, axis_names=_axis_names, epsilon=_epsilon)
+
+
+    def ini_attributes(self):
+        self.controller: Harmonixx = None
+
+
+    def get_actuator_value(self):
+        """Get the current value from the hardware with scaling conversion.
+
+        Returns
+        -------
+        float: The position obtained after scaling conversion.
+        """
+        pos = DataActuator(data=self.controller.get_pos(self.axis_name),
+                           units=self.axis_unit)
+        pos = self.get_position_with_scaling(pos)
+        return pos
+
+
+    def close(self):
+        """Terminate the communication protocol"""
+        if self.is_master and self.controller is not None:
+            self.controller.close_communication()
+
+
+    def commit_settings(self, param: Parameter):
+        """Apply the consequences of a change of value in the detector settings
+
+        Parameters
+        ----------
+        param: Parameter
+            A given parameter (within detector_settings) whose value has been changed by the user
+        """
+        if param.name() == 'address':
+            self.controller.close_communication()
+            self.controller.open_communication(param.value())
+        else:
+            pass
+
+
+    def ini_stage(self, controller=None):
+        """Actuator communication initialization
+
+        Parameters
+        ----------
+        controller: (object)
+            custom object of a PyMoDAQ plugin (Slave case). None if only one actuator by controller (Master case)
+
+        Returns
+        -------
+        info: str
+        initialized: bool
+            False if initialization failed otherwise True
+        """
+        if self.is_master:
+            self.controller = Harmonixx()
+            address = self.settings.child('address').value()
+            initialized = self.controller.open_communication(address)
+        else:
+            self.controller = controller
+            initialized = True
+
+        info = "init"
+        return info, initialized
+
+
+    def move_abs(self, value: DataActuator):
+        """ Move the actuator to the absolute target defined by value
+
+        Parameters
+        ----------
+        value: (float) value of the absolute target positioning
+        """
+
+        value = self.check_bound(value)  #if user checked bounds, the defined bounds are applied here
+        self.target_value = value
+        value = self.set_position_with_scaling(value)  # apply scaling if the user specified one
+
+        self.controller.move_abs(self.axis_name, value.value(self.axis_unit))  # when writing your own plugin replace this line
+        self.emit_status(ThreadCommand('Update_Status', ['move_abs']))
+
+
+    def move_rel(self, value: DataActuator):
+        """ Move the actuator to the relative target actuator value defined by value
+
+        Parameters
+        ----------
+        value: (float) value of the relative target positioning
+        """
+        value = self.check_bound(self.current_position + value) - self.current_position
+        self.target_value = value + self.current_position
+        value = self.set_position_relative_with_scaling(value)
+
+        self.controller.move_rel(self.axis_name, value.value(self.axis_unit))  # when writing your own plugin replace this line
+        self.emit_status(ThreadCommand('Update_Status', ['move_rel']))
+
+
+    def move_home(self):
+        """Call the reference method of the controller"""
+        self.controller.calibrate(self.axis_name)
+        self.emit_status(ThreadCommand('Update_Status', ['home']))
+
+
+    def stop_motion(self):
+        """Stop the actuator and emits move_done signal"""
+        self.controller.abort()
+        self.emit_status(ThreadCommand('Update_Status', ['stop']))
+
+
+if __name__ == '__main__':
+    main(__file__)
