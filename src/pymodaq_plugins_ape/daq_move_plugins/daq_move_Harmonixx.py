@@ -31,12 +31,12 @@ class DAQ_Move_Harmonixx(DAQ_Move_base):
     is_multiaxes = True
     _axis_names: Union[List[str], Dict[str, int]] = ["SHG", "WP", "DC", "THG", "WAVELENGTH"]
     _controller_units: Union[str, List[str]] = ['', '', '', '', 'm']
-    _epsilon: Union[float, List[float]] = [0.1, 0.1, 0.1, 0.1, 0.1]
+    _epsilons: Union[float, List[float]] = [0.1, 0.1, 0.1, 0.1, 0.1]
     data_actuator_type = DataActuatorType.DataActuator
 
 
     params = [{'title': 'Address:', 'name': 'address', 'type': 'list', 'limits': get_resources()}
-                ] + comon_parameters_fun(is_multiaxes, axis_names=_axis_names, epsilon=_epsilon)
+                ] + comon_parameters_fun(is_multiaxes, axis_names=_axis_names, epsilon=_epsilons)
 
 
     def ini_attributes(self):
@@ -126,8 +126,8 @@ class DAQ_Move_Harmonixx(DAQ_Move_base):
         ----------
         value: (float) value of the relative target positioning
         """
-        value = self.check_bound(self.current_position + value) - self.current_position
-        self.target_value = value + self.current_position
+        value = self.check_bound(self.current_value + value) - self.current_value
+        self.target_value = value + self.current_value
         value = self.set_position_relative_with_scaling(value)
 
         self.controller.move_rel(self.axis_name, value.value(self.axis_unit))  # when writing your own plugin replace this line
